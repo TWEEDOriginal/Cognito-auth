@@ -1,0 +1,151 @@
+service: cognito-auth
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  environment:
+    user_pool_id: { Ref: UserPool }
+    client_id: { Ref: UserClient }
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - cognito-idp:AdminGetUser
+        - cognito-idp:AdminListGroupsForUser
+        - cognito-idp:AdminInitiateAuth
+        - cognito-idp:AdminCreateUser
+        - cognito-idp:AdminDisableUser
+        - cognito-idp:AdminUpdateUserAttributes
+        - cognito-idp:AdminSetUserMFAPreference
+        - cognito-idp:AdminSetUserPassword
+        - cognito-idp:AdminRespondToAuthChallenge
+        - cognito-idp:ListUsers
+      Resource: 
+        - arn:aws:cognito-idp:${aws:region}:${aws:accountId}:userpool/*
+
+functions:
+  ping:
+    handler: src/functions/ping.handler
+    description: Lambda function just for testing
+    events:
+      - http:
+          path: /ping
+          method: get
+          cors: true
+  loginUser:
+    handler: src/user/login.handler
+    events:
+      - http:
+          path: user/login
+          method: post
+          cors: true
+          
+  confirmMfa:
+    handler: src/user/confirmMfa.handler
+    events:
+      - http:
+          path: user/confirmMfa
+          method: post
+          cors: true        
+
+  signupUser:
+    handler: src/user/signup.handler
+    events:
+      - http:
+          path: user/signup
+          method: post
+          cors: true
+
+  privateAPI:
+    handler: src/user/private.handler
+    events:
+      - http:
+          path: user/private
+          method: post
+          cors: true
+          authorizer:
+            name: PrivateAuthorizer
+            type: COGNITO_USER_POOLS
+            arn:
+              Fn::GetAtt:
+                - UserPool
+                - Arn
+            claims:
+              - email
+
+  associateSoftTokenAPI:
+    handler: src/user/associateSoftToken.handler
+    events:
+      - http:
+          path: user/associateSoftTokenAPI
+          method: post
+          cors: true
+          authorizer:
+            name: associateSoftToken
+            type: COGNITO_USER_POOLS
+            arn:
+              Fn::GetAtt:
+                - UserPool
+                - Arn
+
+  setMfaAPI:
+    handler: src/user/userSetMfa.handler
+    events:
+      - http:
+          path: user/setMfa
+          method: post
+          cors: true
+          authorizer:
+            name: setMfaAuthorizer
+            type: COGNITO_USER_POOLS
+            arn:
+              Fn::GetAtt:
+                - UserPool
+                - Arn
+            claims:
+              - email     
+
+
+
+resources:
+  Resources:
+    UserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: serverless-auth-pool
+        UsernameAttributes:
+          - email
+        AccountRecoverySetting:
+          RecoveryMechanisms:
+            - Name: verified_email
+              Priority: 1  
+        EnabledMfas: 
+          - SOFTWARE_TOKEN_MFA
+        MfaConfiguration: OPTIONAL      
+        Schema:
+          - Name: email
+            Required: true
+            Mutable: true
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireLowercase: True
+            RequireNumbers: True
+            RequireSymbols: True
+            RequireUppercase: True
+        AutoVerifiedAttributes: ["email"]
+
+    UserClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: user-pool-ui
+        GenerateSecret: false
+        UserPoolId: { Ref: UserPool }
+        AccessTokenValidity: 5
+        IdTokenValidity: 5
+        ExplicitAuthFlows:
+          - "ALLOW_ADMIN_USER_PASSWORD_AUTH"
+          - "ALLOW_REFRESH_TOKEN_AUTH"
+
+plugins:
+  - serverless-esbuild
